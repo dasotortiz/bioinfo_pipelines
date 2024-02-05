@@ -1,0 +1,276 @@
+---
+title: "RNA-seq analysis in R"
+author: "Daniel Soto"
+date: "2024-01-27"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+## loading libraries
+```{r}
+library(DESeq2)
+library(GEOquery)
+library(NOISeq)
+library(apeglm)
+library(DESeq2)
+```
+
+## downloading data
+```{r}
+setwd("C:/Users/danie/OneDrive/Documents/bioinformatic_pipelines/class_1/hw_1")
+getwd()
+urld <- "https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE198533&format=file&file=GSE198533%5FRaw%5Fgene%5Fcounts%5Fmatrix%2Ecsv%2Egz"
+path <- paste(urld, "acc=GSE198533", "GSE198533_Raw_gene_counts_matrix.csv.gz", sep="&");
+GSE198533_count <- as.matrix(data.table::fread(path, header=T, colClasses="integer"), rownames=1)
+```
+
+The warning obtained is produced because the first column is string type and cannot be converted to a integer type. Additionally columns from 20 to 38 are related to Fragments Per Kilobase Million (FPKM) data, which is a normalization that will not be used during this analysis. The data in those columns is a float64 data type and could not be converted to int32 data type. In the next chunk  I removed columns from 20 to 38. In this way, the matrix will be composed only by the gene id and the read count.
+
+```{r}
+GSE198533_count <- GSE198533_count[, -c(20:38)]
+```
+
+## Getting the metadata and assigning factors
+
+```{r}
+gds <- getGEO("GSE198533")
+Meta_GSE198533 <- pData(gds$GSE198533_series_matrix.txt.gz@phenoData)
+Meta_GSE198533 <- Meta_GSE198533[,c("title","source_name_ch1","characteristics_ch1","characteristics_ch1.1","condition:ch1")]
+```
+
+## Getting the annoatated data from Biomart
+
+```{r}
+write.table(rownames(GSE198533_count),"gene_names.txt",
+            col.names = FALSE,row.names = FALSE,quote=F)
+
+annotgene <- read.csv("mart_export.txt",sep="\t",header = T)
+```
+
+
+# Filtering the data and getting annotated genes
+
+```{r}
+# How many genes do I get annotated?
+sum(rownames(GSE198533_count) %in% annotgene$Gene.stable.ID)
+
+# Filter the information so only contains annotated gene in ch 1-22, x and y
+annotgene <- annotgene[annotgene$Chromosome.scaffold.name %in% c(as.character(1:22) ,"X","Y"),]
+sum(rownames(GSE198533_count) %in% annotgene$Gene.stable.ID)
+
+## Checking for duplicates and assigning new row names to the annotated data
+any(duplicated(annotgene$Gene.stable.ID))
+rownames(annotgene) <- annotgene$Gene.stable.ID
+
+#assign gene id as row names for the filtered df
+sum(as.character(rownames(annotgene)) %in% rownames(GSE198533_count))
+
+##  Work with the annotated genes!
+
+GSE198533_count_filt <- GSE198533_count[rownames(GSE198533_count) %in% rownames(annotgene),]
+annotgene_ord <- annotgene[rownames(GSE198533_count_filt ),]
+
+```
+Last validation that shows how the row names of annotated data match with those of the filtered counts data
+```{r}
+all(rownames(annotgene_ord)==rownames(GSE198533_count_filt))
+```
+
+
+
+# NOISeq QC
+
+Creating the NOISeq data from the annotated data and filtered count data
+
+```{r}
+Factors_GSE198533 <- data.frame(Meta_GSE198533[,c("condition:ch1")])
+colnames(Factors_GSE198533)[1]<- "Group"
+
+####
+##assigning values to length, gc content and chr # to use NOISEQ
+####
+
+lengthuse <- abs(annotgene_ord$Gene.end..bp.-annotgene_ord$Gene.start..bp.)
+names(lengthuse) <- rownames(annotgene_ord)
+gc <- annotgene_ord$Gene...GC.content
+names(gc) <- rownames(annotgene_ord)
+biotype <- annotgene_ord$Gene.type
+names(biotype) <- rownames(annotgene_ord)
+chromosome <- annotgene_ord[,c("Chromosome.scaffold.name","Gene.start..bp.","Gene.end..bp.")]
+
+#creating NOISeq data
+data_NOISEQ <- readData(data = GSE198533_count_filt,
+                        length= lengthuse,
+                        gc= gc,
+                        biotype= biotype,
+                        chromosome = chromosome,
+                        factors = Factors_GSE198533)
+```
+
+```{r}
+myexplodata <- dat(data_NOISEQ, type = "biodetection")
+explo.plot(myexplodata, plottype = "persample")
+```
+
+**In this plot we can see that as expected, the majority of the reads are from protein-coding mRNA**
+
+```{r}
+par(mfrow = c(1, 2))
+explo.plot(myexplodata, samples = c(1, 2), toplot = "protein_coding", plottype = "comparison")
+```
+**Similar to the previous plot, we observe that most of the features identified belong to protein-coding mRNA, followed by pseudogenes**
+
+```{r}
+mycountsbio = dat(data_NOISEQ, factor = NULL, type = "countsbio")
+explo.plot(mycountsbio, toplot = 1, samples = 1, plottype = "boxplot")
+```
+**This plot shows the distribution of read counts, the highest values are related to genes and pseudogenes in this sample**
+
+```{r}
+mysaturation = dat(data_NOISEQ, k = 0, ndepth = 7, type = "saturation")
+explo.plot(mysaturation, toplot = 1, samples = 1:2, yleftlim = NULL, yrightlim = NULL)
+explo.plot(mysaturation, toplot = "protein_coding", samples = 1:4)
+```
+**The plot shows the level of saturation in the sample. According to the sample, increasing the sampling depth could lead to discover more features. The second plot compares newly discovered features between 4 different samples**
+
+```{r}
+explo.plot(mycountsbio, toplot = "protein_coding", samples = NULL, plottype = "boxplot")
+```
+**Compares the distribution of protein-coding biotyope across all the samples**
+
+```{r}
+explo.plot(mycountsbio, toplot = 1, samples = NULL, plottype = "barplot")
+```
+**This plot allow us visualize the features with low count per sample to decide a potential removal threshold. In this case, all the samples show a good amount of counts per million**
+
+```{r}
+mylengthbias = dat(data_NOISEQ, factor = "Group", type = "lengthbias")
+explo.plot(mylengthbias, samples = NULL, toplot = "global")
+```
+**This plot explores if length of the features introduce bias to the analysis In this case, R2 shows a high value, indicating that the data is in fact biased by the lenght of the features**
+
+```{r}
+myGCbias = dat(data_NOISEQ, factor = "Group", type = "GCbias")
+explo.plot(myGCbias, samples = NULL, toplot = "global")
+```
+**explore if GC content of the features introduce bias to the analysis. This plots shows that the GC content is probably not introducing bias to the analysis.**
+
+```{r}
+#comparison of read distribution per feature of 12 samples against a reference 
+mycd = dat(data_NOISEQ, type = "cd", norm = FALSE, refColumn = 1)
+explo.plot(mycd,samples = 1:12)
+```
+**This plot assesses if the mRNA composition is introducing bias to the analysis. Since the median of the samples are close to 0, it can be concluded that no bias was detected**
+
+```{r}
+#create a PCA and general QC
+myPCA = dat(data_NOISEQ, type = "PCA")
+explo.plot(myPCA, factor = "Group")
+```
+**The PCA dimension does not explain more than 50% of the variability between samples. There is one healthy sample that is grouped with the samples from ill patients. I explored this fact later on in the differential expression analysis.** 
+
+```{r}
+QCreport(data_NOISEQ, samples = NULL, factor = "Group", norm = FALSE)
+```
+Normalizing the data before the DESeq2 analysis
+
+```{r}
+########
+##normalization to correct for length of features
+########
+
+myRPKM = rpkm(assayData(data_NOISEQ)$exprs, long = lengthuse, k = 0, lc = 1)
+myUQUA = uqua(assayData(data_NOISEQ)$exprs, long = lengthuse, lc = 0.5, k = 0)
+myTMM = tmm(assayData(data_NOISEQ)$exprs, long = 1000, lc = 0)
+```
+
+# Analysis with DESeq2
+
+Due to the result in the previous PCA plot I decided to check the labels of the samples. I found out that the labels given to each sample were mistakenly assigned. In the next code I reassigned all the names to the samples. 
+
+```{r}
+pDataUSE <- pData(data_NOISEQ)
+pDataUSE[1:10,1] <- "healthy_control"
+pDataUSE[11:19,1] <- "BD_patients"
+```
+
+## Analysis excluding intercept
+
+```{r}
+GSE198533_DESeq2 <- DESeqDataSetFromMatrix(countData = GSE198533_count_filt,
+                                           colData = pDataUSE,
+                                           design = ~ -1 + Group)
+```
+
+
+**Filtering the DESeq2 data to remove low count genes.**
+
+```{r}
+#filtering for samples with more than 10 reads per sample in at least 6 samples
+keep <- rowSums(counts(GSE198533_DESeq2) >= 10) >= 6
+
+#Once the filter criteria is ready, we can create a modified phenodata containing genes of interest.
+GSE198533_DESeq2_F <- GSE198533_DESeq2[keep,]
+length(rownames(counts(GSE198533_DESeq2_F)))
+
+GSE198533_DESeq2 <- factor(GSE198533_DESeq2_F$Group, levels = c("healthy_control","BD_patients"))
+```
+
+**Performing the DESeq2 analysis**
+
+```{r}
+GSE198533_DESeq2_F<- DESeq(GSE198533_DESeq2_F)
+GSE198533_res <- results(GSE198533_DESeq2_F, contrast=c("Group","BD_patients","healthy_control"))
+GSE198533_res
+resultsNames(GSE198533_DESeq2_F)
+```
+
+
+**Plotting the results**
+This is the plot that compares the mRNA expression of monocytes sampled from patients with Behcet’s disease compared to healthy controls. For each dot in the plot, Log2FoldChange higher than 0 indicates that the gene is being overexpressed in the disease model compared to the healthy control. A Log2FoldChange below 0 indicates a lower expression compared to the control. Blue dots indicate a significant difference compared to the control
+
+```{r}
+plotMA(GSE198533_res, ylim=c(-2,2))
+```
+
+## Analysis including intercept
+
+
+```{r}
+pDataUSE <- pData(data_NOISEQ)
+pDataUSE[1:10,1] <- "healthy_control"
+pDataUSE[11:19,1] <- "BD_patients"
+pDataUSE[,1] <- as.factor(pDataUSE[,1])
+
+str(pDataUSE)
+
+GSE198533_DESeq2 <- DESeqDataSetFromMatrix(countData = GSE198533_count_filt,
+                                           colData = pDataUSE,
+                                           design = ~ Group)
+
+keep <- rowSums(counts(GSE198533_DESeq2) >= 10) >= 6
+
+GSE198533_DESeq2_F <- GSE198533_DESeq2[keep,]
+length(rownames(counts(GSE198533_DESeq2_F)))
+
+GSE198533_DESeq2_F$Group <- relevel(GSE198533_DESeq2_F$Group, ref = "healthy_control")
+
+
+GSE198533_DESeq2_F<- DESeq(GSE198533_DESeq2_F)
+GSE198533_res <- results(GSE198533_DESeq2_F, contrast=c("Group","BD_patients","healthy_control"))
+GSE198533_res
+resultsNames(GSE198533_DESeq2_F)
+
+lfcShrink(GSE198533_DESeq2_F,coef=c("Group_BD_patients_vs_healthy_control"))
+res_lfcShrink <- lfcShrink(GSE198533_DESeq2_F,coef=c("Group_BD_patients_vs_healthy_control"))
+```
+**plot BD vs control including intercept**
+```{r}
+plotMA(GSE198533_res, ylim=c(-2,2))
+```
+
+**plot BD vs control with shrinkage**
+```{r}
+plotMA(res_lfcShrink, ylim=c(-2,2))
+```
