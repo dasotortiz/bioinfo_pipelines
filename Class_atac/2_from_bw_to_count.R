@@ -6,7 +6,7 @@
 rm(list = ls())
 library(rtracklayer)
 library(GenomicRanges)
-setwd("C:/Users/danie/OneDrive/Documents/bioinformatic_pipelines/class_3/data_code_students")
+setwd("/Users/sotoorda/Documents/bioinfo_course/class_3/data_code_students")
 # control panel
 raw_data_folder <- 'bed_bigwig_files'
 read_length <- 36
@@ -15,6 +15,7 @@ reference_file <- 'refererence.bed'
 
 # bw files
 bw_files <- file.path(raw_data_folder, dir(raw_data_folder, pattern = '*.bw'))
+bw_files
 bw_files <- bw_files[1:6]
 
 # loading reference bed

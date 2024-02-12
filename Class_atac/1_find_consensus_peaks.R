@@ -4,9 +4,9 @@
 rm(list = ls())
 library(rtracklayer)
 library(GenomicRanges)
-setwd("C:/Users/danie/OneDrive/Documents/bioinformatic_pipelines/class_3/data_code_students/bed_bigwig_files")
+setwd("/Users/sotoorda/Documents/bioinfo_course/class_3/data_code_students")
 # control panel
-raw_data_folder <- "C:/Users/danie/OneDrive/Documents/bioinformatic_pipelines/class_3/data_code_students/bed_bigwig_files"
+raw_data_folder <- "/Users/sotoorda/Documents/bioinfo_course/class_3/data_code_students/bed_bigwig_files"
 min_overlap <- 0.3
 chromosomes <- paste0('chr', c(1:22, 'X', 'Y'))
 
