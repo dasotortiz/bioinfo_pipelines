@@ -74,7 +74,7 @@ system.time(
     out="scores"
   ))
 
-# inspecting
+# inpeaks# inspecting
 matches_rse
 motifCounts(matches_rse)[1:3, 1:3]
 rowRanges(matches_rse)[1:3]

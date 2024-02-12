@@ -1,5 +1,5 @@
 # Script for differential analysis / anotation / functional analysis
-
+setwd("/Users/sotoorda/Documents/bioinfo_course/class_3/data_code_students/")
 # set up
 rm(list = ls())
 library(DESeq2)
@@ -22,23 +22,6 @@ count_matrix$peak <- NULL
 head(count_matrix)
 
 # PCA
-# create data frame with the 2 groups. Make sure that 
-# vsd to make data frame
-# then run DESeq
-
-# your code here!
-library(limma)
-dge <- DGEList(counts=count_matrix)
-design <- model.matrix(~ Group )
-keep <- filterByExpr(dge, design=design)
-design
-dge <- dge[keep,,keep.lib.sizes=FALSE]
-dge <- calcNormFactors(dge)
-dge
-
-
-
-# PCA
 # your code here!
 # creating the pheno data
 pheno <- data.frame(cell_type = factor(c(rep("HL60", 3), rep("Mac3h", 3))))
@@ -48,7 +31,8 @@ dds <- DESeqDataSetFromMatrix(count_matrix, pheno, ~ cell_type)
 # rlog transformed data
 rlog_transformed <- rlog(dds)
 # pca
-plotPCA(rlog_transformed, intgroup = ‘cell_type’)
+plotPCA(rlog_transformed, intgroup = 'cell_type')
+
 # Differential analysis
 # your code here!
 dds <- DESeq(dds)
@@ -56,13 +40,12 @@ res <- as.data.frame(results(dds))
 head(res)
 
 
-# Differential analysis
-# your code here!
 
 #### Chipseeker: annotation ####
 
 # loading the reference bed file
 peaks <- import('refererence.bed')
+peaks
 
 # creating the peak name
 peaks$name <- paste0(seqnames(peaks), '_', start(peaks), '_', end(peaks))
