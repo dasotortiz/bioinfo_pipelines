@@ -1,8 +1,8 @@
 # Repository overview
 This repository contains the assignments for the course Understanding Bioinformatic Pipelines.
-So far, we have learned how to carry out RNA-seq, ChIP-seq, scRNA-seq and methylation assays. Additionally, approaches we have seen protocols related to multiome analysis.
+So far, we have learned how to carry out RNA-seq, ChIP-seq, scRNA-seq and methylation assays. Additionally, we have studied approaches to multiome analysis.
 
-This repository contains folders for each class. Next, I present the location of homework files (either pdf or rmd files) across the folders:
+This repository contains folders for each class. Next, I present the location of homework files (either pdf or Rmd files) across the folders:
 
 - For the assignments related to RNA-seq:
   
